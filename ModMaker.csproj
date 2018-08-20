@@ -49,11 +49,25 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="JsonDiffPatch\AbstractPatcher.cs" />
+    <Compile Include="JsonDiffPatch\AddOperation.cs" />
+    <Compile Include="JsonDiffPatch\ArrayLcs.cs" />
+    <Compile Include="JsonDiffPatch\CopyOperation.cs" />
+    <Compile Include="JsonDiffPatch\JsonDiffer.cs" />
+    <Compile Include="JsonDiffPatch\JsonPatcher.cs" />
+    <Compile Include="JsonDiffPatch\MoveOperation.cs" />
+    <Compile Include="JsonDiffPatch\Operation.cs" />
+    <Compile Include="JsonDiffPatch\PatchDocument.cs" />
+    <Compile Include="JsonDiffPatch\RemoveOperation.cs" />
+    <Compile Include="JsonDiffPatch\ReplaceOperation.cs" />
+    <Compile Include="JsonDiffPatch\Tavis.JsonPointer\JsonPointer.cs" />
+    <Compile Include="JsonDiffPatch\TestOperation.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="JsonDiffPatch\packages.config" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
@@ -65,6 +79,9 @@
       <Project>{08056549-3BE8-454C-A09A-67EDCDC81261}</Project>
       <Name>VintagestoryLib</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="JsonDiffPatch\JsonDiffPatch.csproj" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

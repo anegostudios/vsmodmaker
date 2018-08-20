@@ -2,7 +2,9 @@
 using ICSharpCode.SharpZipLib.GZip;
 using ICSharpCode.SharpZipLib.Tar;
 using ICSharpCode.SharpZipLib.Zip;
+using JsonDiffPatch;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,17 +17,18 @@ using Vintagestory.API.Config;
 using Vintagestory.Client;
 using Vintagestory.Common;
 
-namespace ExtractMod
+namespace ModMaker
 {
     class Program
     {
         static string version;
+        static bool createPatches  = true;
 
         static void Main(string[] args)
         {
             try
             {
-                string moddedfolder = Path.Combine(ClientSettings.AssetsPath, "assets"); //"C:\\Users\\tyron\\AppData\\Roaming\\Vintagestory\\assets"; //
+                string moddedfolder = "C:\\Users\\tyron\\AppData\\Roaming\\Vintagestory\\assets"; //Path.Combine(ClientSettings.AssetsPath, "assets");
 
                 version = GameVersion.ShortGameVersion;
                 if (args.Length > 0) version = args[0];
@@ -33,7 +36,7 @@ namespace ExtractMod
                 Console.WriteLine("Baseline version is " + version);
                 Console.WriteLine("Modded folder is " + moddedfolder);
 
-                string vanillafolder = Path.Combine(Path.GetTempPath(), "VintageStory", version);
+                string vanillafolder = Path.Combine(Path.GetTempPath(), "VintageStoryModMaker", version, "assets");
 
                 EnsureAssetsAvailable(vanillafolder);
                 List<string> relPaths = ExtractChanges(vanillafolder, moddedfolder);
@@ -41,6 +44,7 @@ namespace ExtractMod
                 if (relPaths.Count == 0)
                 {
                     Console.WriteLine("No differences detected! Aborting mod creation.");
+                    Console.ReadLine();
                     return;
                 }
 
@@ -62,6 +66,7 @@ namespace ExtractMod
                     Name = name,
                     ModID = modid,
                     Type = EnumModType.Content,
+                    Side = EnumAppSide.Universal,
                     Authors = new string[] { author }
                 };
 
@@ -71,11 +76,38 @@ namespace ExtractMod
                 string assetsfolder = Path.Combine(outfolder, "assets", "game");
                 Directory.CreateDirectory(assetsfolder);
 
+                if (createPatches)
+                {
+                    Directory.CreateDirectory(Path.Combine(assetsfolder, "patches"));
+                }
+
                 foreach (string relpath in relPaths)
                 {
-                    string outfile = Path.Combine(assetsfolder, relpath);
-                    Directory.CreateDirectory(Path.GetDirectoryName(outfile));
-                    File.Copy(Path.Combine(moddedfolder, relpath), outfile);
+                    if (createPatches)
+                    {
+                        string patch;
+
+                        try
+                        {
+                            patch = GenPatch(Path.Combine(vanillafolder, relpath), Path.Combine(moddedfolder, relpath), relpath);
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine("Failed creating patch for {0}, exception: {1}", relpath, e);
+                            Console.ReadLine();
+                            return;
+                        }
+
+                        string outfile = Path.Combine(assetsfolder, "patches", relpath.Replace("\\", "-"));
+                        File.WriteAllText(outfile, patch);
+                    } else
+                    {
+                        string outfile = Path.Combine(assetsfolder, relpath);
+
+                        Directory.CreateDirectory(Path.GetDirectoryName(outfile));
+                        File.Copy(Path.Combine(moddedfolder, relpath), outfile);
+                    }
+                    
                 }
 
                 string archivepath = Path.Combine(GamePaths.Mods, modid + ".zip");
@@ -99,6 +131,22 @@ namespace ExtractMod
             Console.ReadLine();
         }
 
+        private static string GenPatch(string leftFile, string rightFile, string relPath)
+        {
+            var left = JToken.Parse(File.ReadAllText(leftFile));
+            var right = JToken.Parse(File.ReadAllText(rightFile));
+            var patchDoc = new JsonDiffer().Diff(left, right, false);
+
+            // Cheap way of doing it but meh
+            var patchToken = JToken.Parse(patchDoc.ToString());
+            foreach (var val in  (patchToken as JArray))
+            {
+                val["file"] = relPath.Replace("\\", "/");
+            }
+            
+            return patchToken.ToString();
+        }
+
         private static List<string> ExtractChanges(string vanillafolder, string moddedfolder)
         {
             List<string> differentFiles = new List<string>();
@@ -108,7 +156,7 @@ namespace ExtractMod
                 if (!file.EndsWith(".json")) continue;
 
                 string relPath = file.Substring(moddedfolder.Length + 1);
-                string otherfile = Path.Combine(vanillafolder, "assets", relPath);
+                string otherfile = Path.Combine(vanillafolder, relPath);
 
                 if (!File.Exists(otherfile)) continue;
 
@@ -127,91 +175,41 @@ namespace ExtractMod
 
 
 
-        static IEnumerable<string> GetFiles(string path)
-        {
-            Queue<string> queue = new Queue<string>();
-            queue.Enqueue(path);
-            while (queue.Count > 0)
-            {
-                path = queue.Dequeue();
-                try
-                {
-                    foreach (string subDir in Directory.GetDirectories(path))
-                    {
-                        queue.Enqueue(subDir);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine(ex);
-                }
-                string[] files = null;
-                try
-                {
-                    files = Directory.GetFiles(path);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine(ex);
-                }
-                if (files != null)
-                {
-                    for (int i = 0; i < files.Length; i++)
-                    {
-                        yield return files[i];
-                    }
-                }
-            }
-        }
 
-        private static void EnsureAssetsAvailable(string vanillafolder)
+        private static void EnsureAssetsAvailable(string vanillaAssetsFolder)
         {
-            if (Directory.Exists(Path.Combine(vanillafolder, "assets")))
+            if (Directory.Exists(Path.Combine(vanillaAssetsFolder)))
             {
                 Console.WriteLine("Found vanilla assets in temp folder, will use that as reference.");
+                return;
             }
             else
             {
                 Console.WriteLine("Downloading vanilla assets for v{0}...", version);
                 string filename = GameVersion.Branch == EnumGameBranch.Stable ? "/files/stable/vs_server_" + version + ".tar.gz" : "/files/unstable/vs_server_" + version + ".tar.gz";
-                Directory.CreateDirectory(vanillafolder);
+                Directory.CreateDirectory(Path.Combine(vanillaAssetsFolder, ".."));
 
-                var zipfile = Path.Combine(vanillafolder, version) + ".tar.gz";
+                var zipfilepath = Path.Combine(Path.Combine(vanillaAssetsFolder, ".."), version) + ".tar.gz";
 
                 try
                 {
                     WebClient wclient = new WebClient();
-                    wclient.DownloadFile("https://account.vintagestory.at" + filename, zipfile);
+                    wclient.DownloadFile("https://account.vintagestory.at" + filename, zipfilepath);
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine("Failed downloading " + filename + ". Giving up, sorry. Exception: {0}", e);
-                    Directory.Delete(vanillafolder);
+                    Directory.Delete(vanillaAssetsFolder);
                     return;
                 }
 
                 Console.WriteLine("File downloaded. Extracting...");
                 var zip = new FastZip();
-                ExtractTGZ(zipfile, vanillafolder);
+                ExtractTGZ(zipfilepath, Path.Combine(vanillaAssetsFolder, ".."));
 
                 Console.WriteLine("Files extracted...");
             }
         }
-
-
-        public static void ExtractTGZ(String gzArchiveName, String destFolder)
-        {
-            Stream inStream = File.OpenRead(gzArchiveName);
-            Stream gzipStream = new GZipInputStream(inStream);
-
-            TarArchive tarArchive = TarArchive.CreateInputTarArchive(gzipStream);
-            tarArchive.ExtractContents(destFolder);
-            tarArchive.Close();
-
-            gzipStream.Close();
-            inStream.Close();
-        }
-
 
 
         public static void CreateModArchive(string outPathname, string folderName)
@@ -272,6 +270,60 @@ namespace ExtractMod
                 CompressFolder(folder, zipStream, folderOffset);
             }
         }
+
+
+
+        static IEnumerable<string> GetFiles(string path)
+        {
+            Queue<string> queue = new Queue<string>();
+            queue.Enqueue(path);
+            while (queue.Count > 0)
+            {
+                path = queue.Dequeue();
+                try
+                {
+                    foreach (string subDir in Directory.GetDirectories(path))
+                    {
+                        queue.Enqueue(subDir);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(ex);
+                }
+                string[] files = null;
+                try
+                {
+                    files = Directory.GetFiles(path);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(ex);
+                }
+                if (files != null)
+                {
+                    for (int i = 0; i < files.Length; i++)
+                    {
+                        yield return files[i];
+                    }
+                }
+            }
+        }
+
+
+        public static void ExtractTGZ(String gzArchiveName, String destFolder)
+        {
+            Stream inStream = File.OpenRead(gzArchiveName);
+            Stream gzipStream = new GZipInputStream(inStream);
+
+            TarArchive tarArchive = TarArchive.CreateInputTarArchive(gzipStream);
+            tarArchive.ExtractContents(destFolder);
+            tarArchive.Close();
+
+            gzipStream.Close();
+            inStream.Close();
+        }
+
 
 
     }
