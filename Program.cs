@@ -98,7 +98,7 @@ namespace ModMaker
                             return;
                         }
 
-                        string outfile = Path.Combine(assetsfolder, "patches", relpath.Replace(Path.PathSeparator, '-'));
+                        string outfile = Path.Combine(assetsfolder, "patches", relpath.Replace(Path.DirectorySeparatorChar, '-'));
                         File.WriteAllText(outfile, patch);
                     } else
                     {
@@ -110,7 +110,7 @@ namespace ModMaker
                     
                 }
 
-                string archivepath = Path.Combine(GamePaths.Mods, modid + ".zip");
+                string archivepath = Path.Combine(GamePaths.BinariesMods, modid + ".zip");
                 Console.WriteLine("Done. Packing all into mod archive {0}...", archivepath);
 
                 CreateModArchive(archivepath, outfolder);
@@ -222,7 +222,7 @@ namespace ModMaker
             // This setting will strip the leading part of the folder path in the entries, to
             // make the entries relative to the starting folder.
             // To include the full path for each entry up to the drive root, assign folderOffset = 0.
-            int folderOffset = folderName.Length + (folderName.EndsWith(Path.PathSeparator.ToString()) ? 0 : 1);
+            int folderOffset = folderName.Length + (folderName.EndsWith(Path.DirectorySeparatorChar.ToString()) ? 0 : 1);
 
             CompressFolder(folderName, zipStream, folderOffset);
 
